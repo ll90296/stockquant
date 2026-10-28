@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个股动量轮动 · 信号系统</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --border: #e4e7ed;
+    --text: #1f2d3d; --muted: #8492a6;
+    --up: #c0392b; --down: #27ae60; --accent: #3465a4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .grid { display: grid; gap: 14px; }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .row-2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 12px; padding: 2px 10px; border-radius: 20px; font-weight: normal; }
+  .badge.on  { background: #fdecea; color: var(--up); }
+  .badge.off { background: #e8f6ee; color: var(--down); }
+  .badge.gray{ background: #eef1f5; color: var(--muted); }
+  .kpi { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 6px; }
+  .kpi .item b { font-size: 20px; display: block; }
+  .kpi .item span { font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted); font-weight: normal; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .order { background: #fffdf5; border: 1px dashed #e6c86e; border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 13px; line-height: 1.6; }
+  .order .tag { color: #b8860b; font-weight: bold; margin-right: 6px; }
+  .pool-item { display: inline-flex; align-items: center; gap: 6px; background: #eef1f5; border-radius: 6px; padding: 4px 8px; margin: 3px 6px 3px 0; font-size: 13px; }
+  .pool-item a { color: var(--up); cursor: pointer; text-decoration: none; font-weight: bold; }
+  input, select, button {
+    font-size: 13px; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: #fff; color: var(--text);
+  }
+  button { cursor: pointer; background: var(--accent); color: #fff; border: none; }
+  button.ghost { background: #eef1f5; color: var(--text); }
+  button:hover { opacity: .9; }
+  .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .form-row label { font-size: 12px; color: var(--muted); }
+  #chart { width: 100%; height: 380px; }
+  #ddchart { width: 100%; height: 130px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .loading { color: var(--muted); padding: 30px; text-align: center; }
+  .disclaimer { margin-top: 20px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .toggle span { padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  .toggle span.act { background: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>个股动量轮动 · 信号系统</h1>
+  <div class="sub">服务器只算信号和推送 · 执行(下单/条件单)在券商APP手动完成 · 不接入券商接口</div>
+
+  <div class="grid">
+    <!-- 当前信号 -->
+    <div class="card" id="signal-card">
+      <h2>当前信号 <span class="badge gray" id="sig-state">加载中…</span></h2>
+      <div id="sig-body" class="loading">计算中…</div>
+    </div>
+
+    <!-- 条件单 -->
+    <div class="card">
+      <h2>条件单指令 <span class="badge gray">券商APP手动挂</span></h2>
+      <div id="orders-body" class="loading">等待信号…</div>
+      <div class="form-row">
+        <button class="ghost" onclick="notifyTest()">推送到微信/邮件</button>
+        <span class="muted" id="notify-msg"></span>
+      </div>
+    </div>
+
+    <!-- 净值曲线 -->
+    <div class="card">
+      <h2>策略净值 <span class="badge gray" id="curve-meta"></span></h2>
+      <div class="kpi" id="kpis"></div>
+      <div id="chart"></div>
+      <div id="ddchart"></div>
+    </div>
+
+    <!-- 股票池 -->
+    <div class="card">
+      <h2>股票池 <span class="toggle" id="uni-toggle">
+        <span data-u="hs300">沪深300全池</span><span data-u="custom">自定义池</span></span></h2>
+      <div id="pool-body" class="loading">加载中…</div>
+      <div class="form-row">
+        <input id="new-code" placeholder="输入6位个股代码, 如 600039" style="width:220px">
+        <button onclick="addStock()">加入自定义池</button>
+        <span class="muted">加入后自动下载历史数据并参与动量排名</span>
+      </div>
+    </div>
+
+    <!-- 策略参数 -->
+    <div class="card">
+      <h2>策略参数 <span class="badge gray">改完点保存, 曲线自动重算</span></h2>
+      <div class="form-row">
+        <label>动量回看(日)</label><input id="p-lookback" style="width:70px">
+        <label>持有只数</label><input id="p-topn" style="width:56px">
+        <label>缓冲带</label><input id="p-buffer" style="width:56px">
+        <label>调仓频次</label>
+        <select id="p-freq">
+          <option value="daily">每日</option><option value="weekly">每周</option>
+          <option value="biweekly">双周</option><option value="monthly">每月</option>
+        </select>
+        <label>止损%</label><input id="p-stop" style="width:56px">
+        <button onclick="saveConfig()">保存</button>
+        <span class="muted" id="cfg-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">
+    免责声明：本系统基于公开历史数据的量化分析，仅供研究参考，不构成投资建议。股票池为当前成分时存在幸存者偏差，
+    回测收益不代表未来表现；市场有风险，投资需谨慎。交易执行请在券商APP内人工确认。
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pct = v => (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+const RED = "#c0392b", GREEN = "#27ae60";
+
+function badge(stateEl, text, cls) { stateEl.textContent = text; stateEl.className = "badge " + cls; }
+
+async function loadOverview() {
+  try {
+    const s = await (await fetch("/api/overview")).json();
+    if (s.error) { $("sig-body").innerHTML = `<div class="loading">${s.error}</div>`; return; }
+    const st = $("sig-state");
+    if (s.empty) badge(st, "空仓防守", "off"); else badge(st, "持仓中", "on");
+    let html = `
+      <div class="muted" style="margin-bottom:8px">数据截止 ${s.asof} · 股票池 ${s.pool_size} 只 ·
+        沪深300ETF 现价 ${s.mkt_px} / 200日线 ${s.mkt_ma}
+        (${s.risk_on ? "线上方→可持仓" : "下方→空仓"})</div>`;
+    if (s.empty) {
+      html += `<div style="font-size:17px;padding:14px 0;color:var(--down)">当前应空仓防守，不持有任何个股</div>
+        <div class="muted">动量前10(仅供观察，不买入):</div>
+        <table><tr>${s.mom_top10.map(x =>
+          `<td>${x[0]} ${s.names[x[0]] || ""}<br><b style="color:var(--up)">${pct(x[1])}</b></td>`).join("")}</tr></table>`;
+    } else {
+      html += `<table><tr><th>代码 / 名称</th><th class="num">权重</th><th class="num">120日动量</th></tr>` +
+        s.targets.map(([c, w]) => {
+          const m = s.mom_top10.find(x => x[0] === c);
+          return `<tr><td><b>${c}</b> ${s.names[c] || ""}</td><td class="num">${(w * 100).toFixed(0)}%</td>
+            <td class="num" style="color:var(--up)">${m ? pct(m[1]) : "-"}</td></tr>`;
+        }).join("") + `</table>`;
+    }
+    $("sig-body").innerHTML = html;
+    $("orders-body").innerHTML = s.orders.map(o =>
+      `<div class="order"><span class="tag">${o.type === "re-entry" ? "▶ 进场提醒" : "🛑 止损单"}</span>${o.text}</div>`).join("");
+  } catch (e) { $("sig-body").innerHTML = `<div class="loading">加载失败: ${e}</div>`; }
+}
+
+async function loadCurve() {
+  try {
+    const d = await (await fetch("/api/curve")).json();
+    if (d.error) { $("curve-meta").textContent = d.error; return; }
+    badge($("curve-meta"), `${d.start} ~ ${d.end} · ${d.freq}`, "gray");
+    $("kpis").innerHTML = `
+      <div class="item"><b style="color:${d.stats.cagr >= 0 ? RED : GREEN}">${pct(d.stats.cagr)}</b><span>年化(含成本)</span></div>
+      <div class="item"><b style="color:GREEN">${pct(d.stats.mdd)}</b><span>最大回撤</span></div>
+      <div class="item"><b>${d.stats.sharpe.toFixed(2)}</b><span>夏普</span></div>
+      <div class="item"><b>${d.stats.annual_turnover.toFixed(1)}x</b><span>年换手</span></div>
+      <div class="item"><b>${pct(d.stats.total_cost_pct)}</b><span>累计成本</span></div>`;
+    const chart = echarts.init($("chart"));
+    chart.setOption({
+      animation: false,
+      legend: { data: ["策略净值", "沪深300ETF"], top: 0 },
+      tooltip: { trigger: "axis" },
+      grid: { left: 50, right: 20, top: 30, bottom: 20 },
+      xAxis: { type: "category", data: d.dates },
+      yAxis: { type: "log", scale: true },
+      series: [
+        { name: "策略净值", type: "line", data: d.nav, showSymbol: false, lineStyle: { width: 2, color: RED }, itemStyle: { color: RED } },
+        { name: "沪深300ETF", type: "line", data: d.bench, showSymbol: false, lineStyle: { width: 1, color: "#8492a6" }, itemStyle: { color: "#8492a6" } },
+      ],
+    });
+    const dd = echarts.init($("ddchart"));
+    dd.setOption({
+      animation: false,
+      tooltip: { trigger: "axis", valueFormatter: v => pct(v) },
+      grid: { left: 50, right: 20, top: 5, bottom: 20 },
+      xAxis: { type: "category", data: d.dates, axisLabel: { show: false } },
+      yAxis: { type: "value", axisLabel: { formatter: v => pct(v) } },
+      series: [{ type: "line", data: d.dd, showSymbol: false, lineStyle: { width: 0 },
+        areaStyle: { color: "rgba(192,57,43,.45)" }, itemStyle: { color: RED } }],
+    });
+  } catch (e) { $("curve-meta").textContent = "曲线加载失败"; }
+}
+
+async function loadPool() {
+  const p = await (await fetch("/api/pool")).json();
+  $("p-lookback").value = p.lookback; $("p-topn").value = p.top_n;
+  $("p-buffer").value = p.buffer_rank; $("p-freq").value = p.rebalance;
+  document.querySelectorAll("#uni-toggle span").forEach(el =>
+    el.classList.toggle("act", el.dataset.u === p.universe));
+  let html;
+  if (p.universe === "custom") {
+    html = p.custom_pool.length
+      ? p.custom_pool.map(c =>
+          `<span class="pool-item"><b>${c}</b> ${p.custom_names?.[c] || ""}<a onclick="removeStock('${c}')">✕</a></span>`).join("")
+      : `<div class="muted">自定义池为空，请在下方添加个股（添加第一只时自动切换到自定义池模式）</div>`;
+  } else {
+    html = `<div class="muted">当前使用沪深300全部成分股(${p.hs300_count}只)做动量轮动。想只做自己选的个股？在下方添加后自动切换。</div>`;
+  }
+  $("pool-body").innerHTML = html;
+}
+
+async function addStock() {
+  const code = $("new-code").value.trim();
+  if (!code) return;
+  $("new-code").value = "下载历史数据中…"; $("new-code").disabled = true;
+  const r = await (await fetch("/api/pool", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "add", code }) })).json();
+  $("new-code").disabled = false; $("new-code").value = "";
+  if (r.error) alert(r.error);
+  await Promise.all([loadPool(), loadOverview(), loadCurve()]);
+}
+
+async function removeStock(code) {
+  if (!confirm(`从自定义池移除 ${code} ?`)) return;
+  await fetch("/api/pool", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "remove", code }) });
+  await Promise.all([loadPool(), loadOverview(), loadCurve()]);
+}
+
+async function setUniverse(u) {
+  await fetch("/api/pool", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "set_universe", universe: u }) });
+  await Promise.all([loadPool(), loadOverview(), loadCurve()]);
+}
+document.querySelectorAll("#uni-toggle span").forEach(el =>
+  el.addEventListener("click", () => setUniverse(el.dataset.u)));
+
+async function saveConfig() {
+  $("cfg-msg").textContent = "重算中…";
+  const r = await (await fetch("/api/config", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      lookback: +$("p-lookback").value, top_n: +$("p-topn").value,
+      buffer_rank: +$("p-buffer").value, rebalance: $("p-freq").value,
+      stop_loss_pct: +$("p-stop").value / 100,
+    }) })).json();
+  $("cfg-msg").textContent = r.ok ? "已保存 ✓" : "保存失败";
+  await Promise.all([loadOverview(), loadCurve()]);
+  setTimeout(() => $("cfg-msg").textContent = "", 2500);
+}
+
+async function notifyTest() {
+  $("notify-msg").textContent = "发送中…";
+  const r = await (await fetch("/api/notify-test", { method: "POST" })).json();
+  $("notify-msg").textContent = r.msg || r.error || "";
+}
+
+loadOverview(); loadCurve(); loadPool();
+</script>
+</body>
+</html>

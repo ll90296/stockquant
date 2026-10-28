@@ -1,0 +1,29 @@
+strategy:
+  universe: hs300
+  custom_pool: []
+  lookback: 120
+  top_n: 5
+  buffer_rank: 20
+  min_momentum: 0.0
+  market_filter: true
+  rebalance: weekly
+  rebalance_weekday: 5
+  portfolio_value: 50000
+  stop_loss_pct: 0.15
+fees:
+  commission_rate: 0.00025
+  commission_min: 5.0
+  stamp_tax: 0.0005
+  slippage: 0.001
+notify:
+  wecom_webhook: ''
+  serverchan_key: ''
+  smtp:
+    host: ''
+    port: 465
+    user: ''
+    password: ''
+    to: ''
+paths:
+  data_dir: data
+  log_dir: logs
