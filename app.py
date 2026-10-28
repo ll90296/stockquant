@@ -233,8 +233,7 @@ def api_pool_post():
         st["custom_pool"].append(code)
         if len(st["custom_pool"]) == 1 and st["universe"] != "custom":
             st["universe"] = "custom"      # 第一个自定义个股加入即切到自定义池
-        return jsonify({"ok": True, "custom_pool": st["custom_pool"],
-                        "universe": st["universe"], "name": stock_name(code)})
+        added_name = stock_name(code)
     elif action == "remove":
         code = data.get("code", "")
         st["custom_pool"] = [c for c in st["custom_pool"] if c != code]
@@ -247,7 +246,8 @@ def api_pool_post():
     with open(os.path.join(HERE, "config.yaml"), "w", encoding="utf-8") as f:
         import yaml as _y
         _y.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
-    return jsonify({"ok": True, "custom_pool": st["custom_pool"], "universe": st["universe"]})
+    return jsonify({"ok": True, "custom_pool": st["custom_pool"], "universe": st["universe"],
+                    "name": added_name if action == "add" else None})
 
 
 @app.route("/api/config", methods=["POST"])

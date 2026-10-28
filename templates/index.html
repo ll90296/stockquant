@@ -93,7 +93,7 @@
       <div class="form-row">
         <input id="new-code" placeholder="输入6位个股代码, 如 600039" style="width:220px">
         <button onclick="addStock()">加入自定义池</button>
-        <span class="muted">加入后自动下载历史数据并参与动量排名</span>
+        <span class="muted" id="add-msg">加入后自动下载历史数据并参与动量排名</span>
       </div>
     </div>
 
@@ -216,13 +216,21 @@ async function loadPool() {
 async function addStock() {
   const code = $("new-code").value.trim();
   if (!code) return;
-  $("new-code").value = "下载历史数据中…"; $("new-code").disabled = true;
-  const r = await (await fetch("/api/pool", { method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "add", code }) })).json();
-  $("new-code").disabled = false; $("new-code").value = "";
-  if (r.error) alert(r.error);
-  await Promise.all([loadPool(), loadOverview(), loadCurve()]);
+  $("new-code").value = ""; $("new-code").disabled = true;
+  $("add-msg").textContent = "下载历史数据中…(约10秒)";
+  try {
+    const r = await (await fetch("/api/pool", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", code }) })).json();
+    if (r.error) {
+      $("add-msg").textContent = "失败: " + r.error;
+    } else {
+      $("add-msg").textContent = `已加入: ${code} ${r.name || ""} ✓`;
+      await Promise.all([loadPool(), loadOverview(), loadCurve()]);
+    }
+  } catch (e) { $("add-msg").textContent = "请求失败: " + e; }
+  $("new-code").disabled = false;
+  setTimeout(() => $("add-msg").textContent = "加入后自动下载历史数据并参与动量排名", 6000);
 }
 
 async function removeStock(code) {
